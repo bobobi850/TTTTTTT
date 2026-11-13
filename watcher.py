@@ -1,10 +1,9 @@
-"""Northflank deployment and Discord notification smoke-test.
+"""GitHub Actions execution diagnostic.
 
-IMPORTANT: This is NOT a working KOBUS seat availability checker.
-It intentionally does not claim available seats or scrape a booking site.
+No live KOBUS availability lookup has been verified yet.
 """
 import os
-import time
+import sys
 import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -12,34 +11,29 @@ from zoneinfo import ZoneInfo
 import requests
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
-KST = ZoneInfo("Asia/Seoul")
-DEPARTURE = datetime(2026, 11, 15, 20, 30, tzinfo=KST)
-CHECK_INTERVAL = max(60, int(os.getenv("CHECK_INTERVAL_SECONDS", "300")))
-WEBHOOK = os.getenv("DISCORD_WEBHOOK_URL", "").strip()
-SEND_STARTUP = os.getenv("SEND_STARTUP_TEST", "true").lower() == "true"
+DEPARTURE = datetime(2026, 11, 15, 20, 30, tzinfo=ZoneInfo("Asia/Seoul"))
 
 
-def notify(message: str) -> None:
-    if not WEBHOOK:
-        logging.warning("DISCORD_WEBHOOK_URL is missing. No Discord notification sent.")
-        return
-    try:
-        response = requests.post(WEBHOOK, json={"content": message}, timeout=15)
-        response.raise_for_status()
-        logging.info("Discord message sent.")
-    except requests.RequestException as exc:
-        logging.error("Discord notification failed: %s", exc)
+def notify(message):
+    url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
+    if not url:
+        raise RuntimeError("GitHub Actions secret DISCORD_WEBHOOK_URL is missing")
+    response = requests.post(url, json={"content": message}, timeout=15)
+    response.raise_for_status()
+    logging.info("Discord notification delivered (HTTP %s).", response.status_code)
 
 
-def main() -> None:
-    logging.warning("DIAGNOSTIC MODE ONLY: no live seat monitoring is implemented.")
+def main():
+    now = datetime.now(ZoneInfo("Asia/Seoul"))
     logging.info("Target: Seosan -> Daejeon Complex, 2026-11-15 20:30 KST")
-    if SEND_STARTUP:
-        notify("🧪 버스 알림 테스트: Northflank 컨테이너가 시작되었습니다. ⚠️ 아직 KOBUS 좌석 감시 기능은 연결되지 않았습니다.")
-    while datetime.now(KST) < DEPARTURE:
-        logging.info("Container alive; live seat checking is NOT enabled.")
-        time.sleep(CHECK_INTERVAL)
-    logging.info("Departure time passed; shutting down.")
+    if now >= DEPARTURE:
+        logging.info("Departure time passed. Exiting.")
+        return
+    if "--test-webhook" in sys.argv:
+        notify("🧪 GitHub Actions 알림 테스트 성공! ⚠️ 실제 KOBUS 잔여 좌석 조회는 아직 구현되지 않았습니다.")
+        return
+    # Never claim seats are available based on a mere successful workflow run.
+    logging.warning("DIAGNOSTIC ONLY: live seat checker not yet implemented; no seat alert sent.")
 
 
 if __name__ == "__main__":
