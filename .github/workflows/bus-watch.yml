@@ -1,0 +1,42 @@
+name: Bus Seat Watcher (diagnostic only)
+
+on:
+  workflow_dispatch:
+    inputs:
+      test_discord:
+        description: 'Send a single Discord connectivity test'
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: '3-59/5 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bus-watcher
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+      - run: pip install -r requirements.txt
+      - name: Diagnostic run (NO SEAT CHECK YET)
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TEST_DISCORD: ${{ github.event_name == 'workflow_dispatch' && inputs.test_discord }}
+        shell: bash
+        run: |
+          if [ "$TEST_DISCORD" = "true" ]; then
+            python watcher.py --test-webhook
+          else
+            python watcher.py
+          fi
