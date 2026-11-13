@@ -1,33 +1,32 @@
-# TTTTTTT — Bus Seat Watcher
+# KOBUS Seat Watcher — Seosan → Daejeon
 
-Target: **Seosan → Daejeon Complex** on **2026-11-15 20:30 KST**.
+**Target:** 2026-11-15 20:30 KST, Seosan (393) → Daejeon Complex (300).
 
-## Current status: deployment diagnostic only
+## Status
 
-The GitHub Actions workflow and Discord webhook test are installed, but **real KOBUS seat availability lookup is not implemented or verified**. Scheduled runs log a diagnostic message only; **they do not monitor seats or notify when a seat becomes available**. Do not rely on this as a booking alert.
+- Discord webhook test: previously confirmed by user.
+- KOBUS request parameters: captured from user browser.
+- 20:30 HTML structure: captured from user browser (`span.start_time`, `span.remain`).
+- **Live access from GitHub Actions: NOT YET VERIFIED.** The server may block access or return changed HTML. A green workflow means the request/parser completed, not that seat availability is independently certified.
 
-## GitHub Actions setup
+## Setup
 
-1. Open **Settings → Secrets and variables → Actions → New repository secret**.
-2. Set the name to `DISCORD_WEBHOOK_URL`, value to a newly rotated Discord webhook URL.
-3. Open **Actions → Bus Seat Watcher (diagnostic only) → Run workflow**.
-4. Turn on `test_discord` for this manual run to send one test notification.
-5. A green Actions run verifies only job execution. A delivered Discord test verifies only the webhook.
-6. The schedule is currently every 5 minutes (best effort; GitHub can delay it). It does not yet check seats.
+1. In **Settings → Secrets and variables → Actions**, configure the repository secret `DISCORD_WEBHOOK_URL`. Rotate any URL previously exposed in chat/screenshots.
+2. In **Actions → Bus Seat Watcher → Run workflow**, leave `test_discord` **unchecked** to perform a **real read-only KOBUS lookup test**.
+3. Open the job log for **Check and notify**. It should print `KOBUS ... N seats`. If not, a lookup error will be logged and the job will fail.
+4. If a verified response has more than 0 seats, the workflow sends a Discord notification with a link for manual booking.
+5. Schedule uses GitHub cron approx. every 5 minutes, subject to delays and skipped executions.
 
-The webhook secret should not appear in source code or screenshots. Any previously shared webhook URL should be rotated.
+The first positive result is cached to avoid duplicate alerts. As implemented, there is **at most one alert** for the trip; if tickets disappear and reappear, no second alert will be sent. Do not mistake a successful test webhook message for a confirmed seat.
 
-## Files
+No booking, purchases, logins, or seat reservations are performed. Requests should remain low volume and honor provider access limitations.
 
-- `watcher.py`: one-shot diagnostic with a manual `--test-webhook` option
-- `.github/workflows/bus-watch.yml`: scheduled no-op diagnostic + manual Discord test
-- `requirements.txt`: requests
-- `Dockerfile`: container environment for possible future VM deployment
+## Shutdown
 
-## Next step
+Scheduled workflow still starts after departure but exits without querying. Disable the workflow after the trip.
 
-Choose and verify an authorized real-time availability data source (for example, a supported provider API where credentials and coverage are available). Confirm that the specific departure and remaining seats are returned, then implement state transition alerts and enable scheduled monitoring. The existence of a route or timetable entry alone does not establish seat availability.
+## Technical detail
 
-## Cleanup
+`watcher.py` starts a cookie session by loading the KOBUS route page and then submits the form fields captured from the user’s browser to `/mrs/alcnSrch.do`. It finds the exact 20:30 row and parses the adjacent remaining seat count. Any missing or ambiguous row is treated as **failure**, never as available seats.
 
-Disable or remove the scheduled workflow after November 15 to avoid unnecessary runs.
+A site change, redirect, session validation, network block, or changed endpoint can make this method fail. It is *not* an official API integration.
