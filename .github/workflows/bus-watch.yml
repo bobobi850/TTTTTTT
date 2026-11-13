@@ -1,12 +1,12 @@
-name: Bus Seat Watcher (diagnostic only)
+name: Bus Seat Watcher
 
 on:
   workflow_dispatch:
     inputs:
       test_discord:
-        description: 'Send a single Discord connectivity test'
-        required: false
+        description: 'Send Discord test only (skip KOBUS lookup)'
         type: boolean
+        required: false
         default: false
   schedule:
     - cron: '3-59/5 * * * *'
@@ -15,23 +15,30 @@ permissions:
   contents: read
 
 concurrency:
-  group: bus-watcher
+  group: bus-watch
   cancel-in-progress: false
 
 jobs:
-  check:
+  monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          cache: 'pip'
-      - run: pip install -r requirements.txt
-      - name: Diagnostic run (NO SEAT CHECK YET)
+      - run: python -m pip install -r requirements.txt
+      - name: Restore alert state
+        id: state
+        uses: actions/cache/restore@v4
+        with:
+          path: .seat-alert-sent
+          key: alert-seosan-daejeon-20261115-2030-v1
+      - name: Check and notify
+        id: check
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          SEAT_ALERT_ALREADY_SENT: ${{ steps.state.outputs.cache-hit == 'true' }}
           TEST_DISCORD: ${{ github.event_name == 'workflow_dispatch' && inputs.test_discord }}
         shell: bash
         run: |
@@ -40,3 +47,13 @@ jobs:
           else
             python watcher.py
           fi
+      - name: Save state after first seat alert
+        if: ${{ steps.check.outputs.found == 'true' && steps.state.outputs.cache-hit != 'true' }}
+        shell: bash
+        run: echo notified > .seat-alert-sent
+      - name: Cache first seat alert state
+        if: ${{ steps.check.outputs.found == 'true' && steps.state.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: .seat-alert-sent
+          key: alert-seosan-daejeon-20261115-2030-v1
